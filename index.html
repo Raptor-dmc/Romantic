@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>จดหมายจากคนหนึ่ง</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--wine:#8e2f3f;--rose:#b9677a;--paper:#fffdf9}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;overflow:hidden;background:#fdeef3;font-family:'Mali','Noto Sans Thai',sans-serif;color:var(--wine);-webkit-tap-highlight-color:transparent}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:pointer}
+#hint{position:fixed;left:0;right:0;bottom:calc(10% + env(safe-area-inset-bottom,0px));text-align:center;font-size:1.15rem;pointer-events:none;transition:opacity 1s;animation:pulse 2.4s ease-in-out infinite}
+#hint.off{opacity:0;animation:none}
+@keyframes pulse{50%{opacity:.45}}
+
+.page{position:fixed;inset:0;opacity:0;pointer-events:none;transition:opacity 1.8s ease}
+.page.on{opacity:1;pointer-events:auto}
+
+/* page 2: letter */
+#letter{display:flex;align-items:center;justify-content:center;padding:max(4vh,env(safe-area-inset-top,0px)) 5vw;background:rgba(255,246,249,.72);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+#paper{position:relative;width:100%;max-width:30rem;max-height:92vh;overflow:auto;padding:2.4rem 2.2rem 2rem;background:var(--paper);border-radius:6px;box-shadow:0 18px 50px rgba(142,47,63,.18),0 2px 6px rgba(142,47,63,.12);transform:rotate(-.6deg);
+  background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 2.39rem,rgba(185,103,122,.14) 2.39rem,rgba(185,103,122,.14) 2.4rem)}
+#paper::before{content:"";position:absolute;top:0;bottom:0;left:1.5rem;width:1px;background:rgba(214,120,140,.35)}
+#paper p{font-size:clamp(1rem,3.4vw,1.15rem);line-height:2.4rem;padding-left:.8rem;opacity:0;transform:translateY(6px);transition:opacity 1.2s,transform 1.2s}
+#paper p.show{opacity:1;transform:none}
+#paper p.to{font-size:1.45rem;font-weight:600;color:var(--wine)}
+#paper p.gap{margin-top:2.4rem}
+#paper p.end{text-align:right;padding-right:.4rem;font-size:1.4rem}
+
+@media (prefers-reduced-motion:reduce){#hint{animation:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">แตะเพื่อปลูกดอกไม้</div>
+
+<div id="letter" class="page"><div id="paper">
+<p class="to">ถึงวนัช</p>
+<p>เราก็ได้รู้จักกันมาสักพักแล้ว</p>
+<p>ก็ยังคงอยากให้เธอมีความสุขทุกๆวัน</p>
+<p>ได้กินของอร่อยๆทุกวัน</p>
+<p>ได้อยู่กับเพื่อน</p>
+<p>ได้หัวเราะแบบที่วนัชเป็น</p>
+<p class="gap">ไม่อยากให้มีสิ่งใดมาทำให้ดอกไม้เฉา</p>
+<p>คนอะไรทำไมถึงเหมาะกับดอกไม้ขนาดนี้กันนะ</p>
+<p class="gap">ถ้ามีพื้นที่มากมาย</p>
+<p>ก็อยากจะปลูกดอกไม้ไว้ให้เธอครับ</p>
+<p class="end">🌷</p>
+</div></div>
+
+<audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
+
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),bgm=document.getElementById('bgm');
+let W,H,DPR,flowers=[],drops=[],ripples=[],sparks=[],petals=[],state='idle',tWater=0,tBloom=0;
+const PALETTE=[['#f77fa6','#ffd3e1'],['#ffa04d','#ffe0bd'],['#b189f2','#e9dcff'],['#ee5f7c','#ffc4d0'],['#ffcf33','#fff0a8'],['#6fbdf2','#d8eefc'],['#ffffff','#ffe8f0']];
+const MAXD=()=>Math.hypot(W,H)/2;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const easeOutBack=t=>{const c=1.5;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+
+function resize(){
+  DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+  if(state!=='idle'&&state!=='watering')genFlowers();
+}
+function genFlowers(){
+  flowers=[];const cx=W/2,cy=H/2,md=MAXD(),base=Math.max(34,Math.min(W,H)/9);
+  for(let i=0;i<900;i++){
+    const x=Math.random()*(W+80)-40,y=Math.random()*(H+80)-40,s=base*(.7+Math.random()*.9);
+    if(flowers.some(f=>Math.hypot(f.x-x,f.y-y)<(f.s+s)*.42))continue;
+    flowers.push({x,y,s,n:5+Math.floor(Math.random()*4),rot:Math.random()*6.28,
+      col:PALETTE[Math.floor(Math.random()*PALETTE.length)],
+      delay:Math.hypot(x-cx,y-cy)/md*7000+Math.random()*500,dur:1900+Math.random()*700,ph:Math.random()*6.28,leaf:Math.random()*6.28});
+  }
+  flowers.push({x:cx,y:cy,s:base*1.5,n:8,rot:0,col:PALETTE[0],delay:0,dur:2200,ph:0,leaf:.8});
+  flowers.sort((a,b)=>a.delay-b.delay);
+}
+function drawFlower(f,p,now){
+  const sway=Math.sin(now/1300+f.ph)*.07,e=easeOutBack(p),r=f.s*e;
+  ctx.save();ctx.translate(f.x,f.y);
+  // leaves
+  ctx.save();ctx.rotate(f.leaf);ctx.fillStyle='#9fd49a';
+  for(let k=0;k<3;k++){ctx.rotate(2.0944);ctx.beginPath();ctx.ellipse(0,-r*.5,r*.12*p,r*.34,0,0,6.2832);ctx.fill()}
+  ctx.restore();
+  ctx.rotate(f.rot+(1-p)*1.2+sway);
+  const pl=r*.5,pw=r*.2;
+  for(let i=0;i<f.n;i++){
+    ctx.save();ctx.rotate(i*6.2832/f.n);
+    const g=ctx.createRadialGradient(0,-pl*.5,0,0,-pl*.5,pl);
+    g.addColorStop(0,f.col[1]);g.addColorStop(1,f.col[0]);
+    ctx.fillStyle=g;ctx.strokeStyle='rgba(150,70,100,.18)';ctx.lineWidth=.8;
+    ctx.beginPath();ctx.ellipse(0,-pl*.62,pw*clamp(p*1.4,0,1),pl*.62,0,0,6.2832);ctx.fill();ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle='#ffc93c';ctx.beginPath();ctx.arc(0,0,r*.12,0,6.2832);ctx.fill();
+  ctx.fillStyle='rgba(160,80,0,.35)';ctx.beginPath();ctx.arc(r*.02,r*.02,r*.05,0,6.2832);ctx.fill();
+  ctx.restore();
+}
+function drawSprout(now){
+  const cx=W/2,cy=H/2,s=Math.min(W,H)/9,sw=Math.sin(now/900)*.05;
+  ctx.save();ctx.translate(cx,cy+s*.9);
+  ctx.fillStyle='#8a6a58';ctx.beginPath();ctx.ellipse(0,0,s*.7,s*.18,0,0,6.2832);ctx.fill();
+  ctx.rotate(sw);ctx.strokeStyle='#5fbf86';ctx.lineWidth=Math.max(3,s*.07);ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(0,0);ctx.quadraticCurveTo(-s*.1,-s*.5,0,-s*.9);ctx.stroke();
+  ctx.fillStyle='#5fbf86';
+  [[-1,-.45],[1,-.6]].forEach(([d,y])=>{ctx.save();ctx.translate(0,y*s);ctx.rotate(d*.9);ctx.beginPath();ctx.ellipse(d*s*.2,0,s*.22,s*.09,0,0,6.2832);ctx.fill();ctx.restore()});
+  ctx.fillStyle='#f77fa6';ctx.beginPath();ctx.ellipse(0,-s,s*.1,s*.16,0,0,6.2832);ctx.fill();
+  ctx.restore();
+}
+function spawnDrops(){
+  const gy=H/2+Math.min(W,H)/9*.2;
+  for(let i=0;i<2;i++)drops.push({x:W/2+(Math.random()-.5)*Math.min(W,H)*.3,y:-10-Math.random()*60,v:340+Math.random()*200,gy:gy+Math.random()*30});
+}
+function frame(now){
+  // light meadow: pale sky -> pale grass
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#fdeef4');g.addColorStop(.55,'#f6f4e6');g.addColorStop(1,'#dcefc9');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  if(state==='idle')drawSprout(now);
+  if(state==='watering'){
+    const k=clamp((now-tWater)/2000,0,1),gr=Math.min(W,H)*(.12+.2*k);
+    const gl=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,gr);
+    gl.addColorStop(0,`rgba(255,200,220,${.55*k})`);gl.addColorStop(1,'rgba(255,200,220,0)');
+    ctx.fillStyle=gl;ctx.fillRect(0,0,W,H);
+    drawSprout(now);
+    if(now-tWater<2800)spawnDrops();
+    else{state='bloom';tBloom=now;genFlowers();initPetals();bgm.currentTime=0;bgm.volume=.7;bgm.muted=false;bgm.play().catch(()=>{});setTimeout(showLetter,11800)}
+  }
+  if(state==='bloom'||state==='letter'){
+    const el=now-tBloom;
+    for(const f of flowers){const p=clamp((el-f.delay)/f.dur,0,1);if(p>0)drawFlower(f,p,now)}
+  }
+  for(let i=drops.length-1;i>=0;i--){
+    const d=drops[i];d.y+=d.v/60;
+    ctx.save();ctx.shadowColor='rgba(255,255,255,.95)';ctx.shadowBlur=10;ctx.fillStyle='rgba(150,205,245,.92)';ctx.beginPath();ctx.ellipse(d.x,d.y,2.5,7,0,0,6.2832);ctx.fill();ctx.restore();
+    if(d.y>=d.gy){ripples.push({x:d.x,y:d.gy,r:2,a:.7});if(Math.random()<.55)sparks.push({x:d.x,y:d.gy,vx:(Math.random()-.5)*.6,vy:-.5-Math.random()*.7,s:5+Math.random()*7,a:1,h:Math.random()<.6});drops.splice(i,1)}
+  }
+  for(let i=ripples.length-1;i>=0;i--){
+    const r=ripples[i];r.r+=1.4;r.a-=.03;
+    if(r.a<=0){ripples.splice(i,1);continue}
+    ctx.strokeStyle=`rgba(100,175,235,${r.a})`;ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(r.x,r.y,r.r*1.6,r.r*.5,0,0,6.2832);ctx.stroke();
+  }
+  for(let i=sparks.length-1;i>=0;i--){
+    const p=sparks[i];p.x+=p.vx+Math.sin(now/400+i)*.25;p.y+=p.vy;p.a-=.007;
+    if(p.a<=0){sparks.splice(i,1);continue}
+    ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);
+    if(p.h){ctx.fillStyle='#f77fa6';heart(p.s)}
+    else{ctx.fillStyle='#fff6c8';ctx.shadowColor='#ffd86b';ctx.shadowBlur=8;ctx.beginPath();ctx.arc(0,0,p.s*.3,0,6.2832);ctx.fill()}
+    ctx.restore();
+  }
+  if(state==='bloom'||state==='letter'){
+    for(const q of petals){
+      q.y+=q.vy;q.x+=Math.sin(now/1100+q.ph)*.6+q.vx;q.r+=q.vr;
+      if(q.y>H+20){q.y=-20;q.x=Math.random()*W}
+      if(q.x>W+20)q.x=-20;if(q.x<-20)q.x=W+20;
+      ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.r);ctx.globalAlpha=.8;ctx.fillStyle=q.c;
+      ctx.beginPath();ctx.ellipse(0,0,q.s*.5,q.s,0,0,6.2832);ctx.fill();ctx.restore();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+function heart(s){
+  ctx.beginPath();ctx.moveTo(0,s*.35);
+  ctx.bezierCurveTo(-s,-s*.2,-s*.5,-s*.9,0,-s*.4);
+  ctx.bezierCurveTo(s*.5,-s*.9,s,-s*.2,0,s*.35);ctx.fill();
+}
+function initPetals(){
+  petals=[];const c=['#ffc4d6','#ffb0c8','#fff0f5','#ffd9a8'];
+  for(let i=0;i<26;i++)petals.push({x:Math.random()*W,y:Math.random()*H,s:4+Math.random()*5,vy:.5+Math.random()*.7,vx:(Math.random()-.5)*.3,r:Math.random()*6,vr:(Math.random()-.5)*.03,ph:Math.random()*6,c:c[i%4]});
+}
+function showLetter(){
+  state='letter';
+  document.getElementById('letter').classList.add('on');
+  const ps=document.querySelectorAll('#paper p');
+  ps.forEach((p,i)=>setTimeout(()=>p.classList.add('show'),1800+i*1300));
+}
+function start(){
+  if(state!=='idle')return;
+  state='watering';tWater=performance.now();
+  document.getElementById('hint').classList.add('off');
+  bgm.muted=true;bgm.play().catch(()=>{});
+}
+cv.addEventListener('pointerdown',start);
+addEventListener('resize',resize);
+resize();requestAnimationFrame(frame);
+</script>
+</body>
+</html>
